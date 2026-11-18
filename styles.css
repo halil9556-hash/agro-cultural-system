@@ -1,0 +1,148 @@
+/* AgroShield Pro — Özel Tasarım Sistemi ve Erişilebilirlik Stilleri */
+:root {
+  --bg-primary: #f4f7f4;
+  --bg-surface: #ffffff;
+  --bg-forest: #073b28;
+  --bg-forest-dark: #042619;
+  --accent-emerald: #10b981;
+  --accent-emerald-dark: #059669;
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --border-subtle: #dce5df;
+  --risk-critical: #b91c1c;
+  --risk-high: #c2410c;
+  --risk-medium: #b45309;
+  --risk-low: #15803d;
+  --risk-beneficial: #0369a1;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Klavye Erişilebilirliği İçin Belirgin Odak Halkası */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid #059669 !important;
+  outline-offset: 2px !important;
+}
+
+/* Özel Kaydırma Çubuğu */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #edf2ee;
+}
+::-webkit-scrollbar-thumb {
+  background: #94a89b;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #647a6c;
+}
+
+/* Navigasyon Aktif Sekme Stili */
+.nav-item-active {
+  background-color: rgba(16, 185, 129, 0.18);
+  color: #ffffff !important;
+  border-left: 4px solid #34d399;
+  font-weight: 600;
+}
+
+/* Durum Rozetleri (Yüksek Kontrast WCAG AA) */
+.badge-critical {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+.badge-high {
+  background-color: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fed7aa;
+}
+.badge-medium {
+  background-color: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.badge-low {
+  background-color: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+.badge-beneficial {
+  background-color: #f0f9ff;
+  color: #075985;
+  border: 1px solid #bae6fd;
+}
+
+/* SVG Arazi Haritası Etkileşim Stilleri */
+.field-polygon {
+  transition: fill-opacity 0.2s ease, stroke-width 0.2s ease;
+  cursor: pointer;
+}
+.field-polygon:hover {
+  fill-opacity: 0.45;
+  stroke-width: 3px;
+}
+.field-polygon-selected {
+  stroke: #ffffff !important;
+  stroke-width: 3.5px !important;
+  fill-opacity: 0.52 !important;
+}
+
+.pole-marker {
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pole-marker:hover {
+  transform: scale(1.16);
+}
+.pole-marker-selected .pole-outer-ring {
+  stroke: #ffffff;
+  stroke-width: 3.5px;
+}
+
+@keyframes pulse-ring {
+  0% { r: 13px; opacity: 0.75; }
+  100% { r: 26px; opacity: 0; }
+}
+.pole-pulse {
+  animation: pulse-ring 2.4s infinite ease-out;
+}
+
+/* Grafik Kapsayıcı Sabit Yükseklik Kuralı */
+.chart-box {
+  position: relative;
+  height: 280px;
+  width: 100%;
+}
+
+/* Acil Durdurma Aktif Katmanı */
+.estop-banner-active {
+  background: repeating-linear-gradient(
+    -45deg,
+    #7f1d1d,
+    #7f1d1d 14px,
+    #991b1b 14px,
+    #991b1b 28px
+  );
+}
