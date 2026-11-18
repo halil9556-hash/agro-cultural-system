@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgroShield Pro — Akıllı Tarım ve Bitki Koruma Yönetim Sistemi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="min-h-screen flex flex-col bg-slate-100 text-slate-900">
+
+  <!-- Üst Simülasyon / Bağlantı Durumu Bildirim Bandı -->
+  <div id="connection-status-banner" role="region" aria-label="Sistem Modu ve Bağlantı Durumu"></div>
+
+  <!-- Acil Durdurma (E-Stop) Aktif Uyarı Bandı -->
+  <div id="estop-active-banner" class="hidden estop-banner-active text-white px-4 py-3 shadow-lg" role="alert">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <span class="px-2.5 py-1 rounded bg-white text-red-900 font-extrabold text-xs tracking-wider">■ ACİL DURDURMA (E-STOP) DEVREDE</span>
+        <span class="text-xs sm:text-sm font-medium">Tüm saha müdahale birimleri ve kimyasal uygulama simülasyonları kilitlendi. Gerekçe: <strong id="estop-banner-reason"></strong></span>
+      </div>
+      <button onclick="releaseEmergencyStop()" class="px-3.5 py-1.5 rounded-lg bg-white hover:bg-red-50 text-red-900 font-bold text-xs shadow">Yönetici Onayıyla Kilidi Kaldır</button>
+    </div>
+  </div>
+
+  <!-- Üst Kontrol Çubuğu (Header) -->
+  <header class="bg-[#073b28] text-white border-b border-emerald-800 sticky top-0 z-30 shadow">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <button onclick="toggleMobileMenu()" class="lg:hidden p-2 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-100" aria-label="Menüyü Aç/Kapat">
+          ☰
+        </button>
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center font-extrabold text-emerald-950 text-lg shadow-inner">🌱</div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-extrabold tracking-tight text-base sm:text-lg">AgroShield Pro</span>
+              <span class="hidden md:inline-block text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-900 text-emerald-200 border border-emerald-700">v1.2 Akıllı Tarım</span>
+            </div>
+            <p class="text-[11px] text-emerald-200/90 hidden sm:block">Sensör Direkleri • Yapay Zekâ Canlı Tespiti • Güvenli Bitki Koruma</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sağ Üst Kontroller: Rol Seçici ve Acil Durdurma -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <div class="flex items-center gap-1.5 bg-emerald-950/80 border border-emerald-700/80 rounded-lg px-2 py-1">
+          <label for="role-selector" class="text-[11px] text-emerald-200 font-medium hidden md:inline">Yetki Rolü:</label>
+          <select id="role-selector" onchange="changeUserRole(this.value)" class="bg-transparent text-white text-xs font-semibold focus:outline-none cursor-pointer">
+            <option value="admin" class="text-slate-900">Ziraat Mühendisi (Yönetici)</option>
+            <option value="operator" class="text-slate-900">Saha Operatörü (Standart)</option>
+            <option value="viewer" class="text-slate-900">Denetçi / Gözlemci (Salt Okunur)</option>
+          </select>
+        </div>
+        <span id="active-role-badge" class="hidden xl:inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-700 text-white"></span>
+
+        <button onclick="openEmergencyStopModal()" class="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white font-extrabold text-xs tracking-wide shadow flex items-center gap-1.5 border border-red-400" title="Tüm saha müdahalelerini anında durdurur">
+          <span>■</span> <span>ACİL DURDUR</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Masaüstü Sekme Navigasyonu -->
+    <nav class="bg-[#042619] border-t border-emerald-900/80 hidden lg:block" aria-label="Ana Navigasyon">
+      <div class="max-w-7xl mx-auto px-6 flex items-center gap-1 overflow-x-auto">
+        <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn nav-item-active px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          📊 Ana Kontrol Paneli <span id="unread-events-count" class="ml-1 px-1.5 py-0.5 text-[11px] font-bold rounded-full bg-red-600 text-white">2</span>
+        </button>
+        <button onclick="switchTab('map')" data-tab="map" class="nav-btn px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          🗺️ Tarım Alanı Haritası & Direkler
+        </button>
+        <button onclick="switchTab('detections')" data-tab="detections" class="nav-btn px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          🤖 Canlı Tespit & YZ Analizi
+        </button>
+        <button onclick="switchTab('chemical')" data-tab="chemical" class="nav-btn px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          🛡️ Güvenli Müdahale & Kimyasal Yönetim
+        </button>
+        <button onclick="switchTab('reports')" data-tab="reports" class="nav-btn px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          📈 Raporlama & İstatistikler (CSV)
+        </button>
+        <button onclick="switchTab('architecture')" data-tab="architecture" class="nav-btn px-4 py-2.5 text-xs font-medium text-emerald-100/90 hover:text-white transition whitespace-nowrap">
+          ⚙️ Mimari, Klasör Yapısı & Güvenlik
+        </button>
+      </div>
+    </nav>
+
+    <!-- Mobil Açılır Navigasyon Menüsü -->
+    <nav id="mobile-sidebar" class="hidden lg:hidden bg-[#042619] border-t border-emerald-800 px-4 py-3 space-y-1.5" aria-label="Mobil Navigasyon">
+      <button onclick="switchTab('dashboard')" data-tab="dashboard" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">📊 Ana Kontrol Paneli</button>
+      <button onclick="switchTab('map')" data-tab="map" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">🗺️ Tarım Alanı Haritası & Direkler</button>
+      <button onclick="switchTab('detections')" data-tab="detections" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">🤖 Canlı Tespit & YZ Analizi</button>
+      <button onclick="switchTab('chemical')" data-tab="chemical" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">🛡️ Güvenli Müdahale & Kimyasal Yönetim</button>
+      <button onclick="switchTab('reports')" data-tab="reports" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">📈 Raporlama & İstatistikler (CSV)</button>
+      <button onclick="switchTab('architecture')" data-tab="architecture" class="nav-btn w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-emerald-100">⚙️ Mimari, Klasör Yapısı & Güvenlik</button>
+    </nav>
+  </header>
+
+  <!-- Ana İçerik Alanı -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5">
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 1: ANA KONTROL PANELİ (DASHBOARD)                            -->
+    <!-- ================================================================== -->
+    <section id="view-dashboard" class="tab-section space-y-6">
+      <!-- Karşılama & Saha Görseli Kartı -->
+      <div class="bg-gradient-to-r from-[#073b28] to-[#065f46] rounded-2xl p-4 sm:p-6 text-white shadow-md grid grid-cols-1 lg:grid-cols-3 gap-5 items-center">
+        <div class="lg:col-span-2 space-y-2.5">
+          <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-emerald-900/90 border border-emerald-600 text-xs font-semibold text-emerald-200">
+            <span>📡 Merkez İstasyon: Polatlı / İç Anadolu Örnek İşletmesi (186 Hektar)</span>
+          </div>
+          <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Akıllı Tarım Alanı ve Bitki Koruma Kontrol Paneli</h1>
+          <p class="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+            Güneş enerjili kontrol direklerinden gelen yapay zekâ destekli canlı tespitlerini inceleyin, yararlı böcek türlerini koruma altına alın ve bitki sağlığına yönelik müdahaleleri 4 aşamalı uzman onayıyla güvenle yönetin.
+          </p>
+          <div class="flex flex-wrap items-center gap-2.5 pt-1">
+            <button onclick="switchTab('map')" class="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-emerald-950 font-bold text-xs shadow">Arazi Haritasını Aç</button>
+            <button onclick="switchTab('detections')" class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/25">Canlı Tespitlerini İncele</button>
+            <button onclick="simulateNewDetection()" class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">+ Örnek Canlı Tespiti Simüle Et</button>
+          </div>
+        </div>
+        <div class="rounded-xl overflow-hidden border-2 border-emerald-400/40 shadow-lg bg-emerald-950">
+          <img src="tarim_diregi.jpg" alt="Güneş enerjili akıllı tarım kontrol direği ve tarım arazisi görünümü" class="w-full h-40 sm:h-44 object-cover max-w-full" />
+        </div>
+      </div>
+
+      <!-- 4 Ana KPI Kartı -->
+      <div id="dashboard-kpi-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+      <!-- Grafikler Satırı -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div class="lg:col-span-2 bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="font-bold text-slate-900 text-sm sm:text-base">Haftalık Canlı Tespitleri ve Risk Dağılımı</h2>
+              <p class="text-xs text-slate-500">Son 7 gündeki zararlı risk sınıfları ile yararlı tür tespitlerinin karşılaştırması</p>
+            </div>
+            <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-slate-100 text-slate-600">Simülasyon Verisi</span>
+          </div>
+          <div class="chart-box">
+            <canvas id="chart-dashboard-trend"></canvas>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+          <div class="mb-3">
+            <h2 class="font-bold text-slate-900 text-sm sm:text-base">Kontrol Direkleri Durum Dağılımı</h2>
+            <p class="text-xs text-slate-500">Aktif, çevrim dışı ve bakımdaki saha direkleri</p>
+          </div>
+          <div class="chart-box">
+            <canvas id="chart-dashboard-poles"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Son Tespit Edilen Canlılar Tablosu -->
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 class="font-bold text-slate-900 text-sm sm:text-base">Son Tespit Edilen Canlılar ve Tespit Zamanları</h2>
+            <p class="text-xs text-slate-500">Kontrol direklerinden gelen son 5 yapay zekâ sınıflandırma kaydı</p>
+          </div>
+          <button onclick="switchTab('detections')" class="px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200">Tüm Tespit Kayıtları →</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 bg-slate-50 text-slate-600 uppercase tracking-wider text-[11px]">
+                <th class="py-2.5 px-3">Canlı Türü / Sınıfı</th>
+                <th class="py-2.5 px-3">Direk</th>
+                <th class="py-2.5 px-3">Tespit Zamanı</th>
+                <th class="py-2.5 px-3">YZ Güven</th>
+                <th class="py-2.5 px-3">Bitki Riski</th>
+                <th class="py-2.5 px-3">Durum</th>
+                <th class="py-2.5 px-3 text-right">İşlem</th>
+              </tr>
+            </thead>
+            <tbody id="dashboard-recent-detections"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tarım Alanları Genel Durumu & Son Sistem Olayları -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="font-bold text-slate-900 text-sm sm:text-base">Tarım Alanlarının Genel Durumu</h2>
+              <p class="text-xs text-slate-500">Parsel bazlı ürün evresi, nem ve tahmini risk özeti</p>
+            </div>
+            <button onclick="switchTab('map')" class="text-xs font-semibold text-emerald-700 hover:underline">Harita Görünümü →</button>
+          </div>
+          <div id="dashboard-fields-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+        </div>
+
+        <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="font-bold text-slate-900 text-sm sm:text-base">Son Sistem Olayları ve Bildirimler</h2>
+              <p class="text-xs text-slate-500">Direk bağlantı uyarıları, tespit alarmları ve işlem kayıtları</p>
+            </div>
+            <button onclick="markAllEventsRead()" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">Tümünü Okundu İşaretle</button>
+          </div>
+          <div id="dashboard-events-list" class="space-y-2.5 max-h-96 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 2: TARIM ALANI HARİTASI VE KONTROL DİREKLERİ                 -->
+    <!-- ================================================================== -->
+    <section id="view-map" class="tab-section hidden space-y-5">
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h1 class="text-lg font-extrabold text-slate-900">Tarım Alanı Haritası ve Kontrol Direkleri Konumları</h1>
+            <p class="text-xs text-slate-600">Harita üzerindeki direkleri veya parselleri seçerek bağlantı durumunu, son veri zamanını ve tespit geçmişini inceleyin.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btn-map-svg" onclick="switchMapEngine('svg')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white">Akıllı Arazi Görünümü (SVG - Kesintisiz)</button>
+            <button id="btn-map-leaflet" onclick="switchMapEngine('leaflet')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Coğrafi Harita (OpenStreetMap)</button>
+            <button onclick="toggleMapOption('coverage')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-50 text-emerald-900 border border-emerald-200 hover:bg-emerald-100">Sensör Menzil Halkaları</button>
+            <button onclick="toggleMapOption('heatmap')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100">Parsel Risk Renklendirmesi</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+          <!-- Sol 2 Sütun: Harita Alanı -->
+          <div class="lg:col-span-2 space-y-3">
+            <!-- SVG Harita Kapsayıcısı -->
+            <div id="svg-map-wrapper">
+              <div id="svg-map-canvas"></div>
+            </div>
+
+            <!-- Coğrafi Harita (Leaflet) Kapsayıcısı + Kesintisiz Yedekleme Açıklaması -->
+            <div id="leaflet-map-wrapper" class="hidden space-y-2">
+              <div id="leaflet-fallback-notice" class="hidden p-3 rounded-xl bg-amber-50 border border-amber-300 text-xs text-amber-950 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <strong>Coğrafi Harita Karo Servisi Bilgilendirmesi:</strong> Dış internet karo sunucusuna (OpenStreetMap) şu an erişilemiyor veya çevrim dışı mod aktif. Uygulamanın geri kalanı kesintisiz çalışmaktadır; tam saha görünümü için <strong>Akıllı Arazi Görünümü (SVG)</strong> modunu kullanabilirsiniz.
+                </div>
+                <button onclick="switchMapEngine('svg')" class="px-3 py-1 rounded bg-amber-800 text-white font-bold">SVG Arazi Haritasına Geç</button>
+              </div>
+              <div id="leaflet-map-container" class="w-full h-96 rounded-xl border border-slate-300 bg-slate-200"></div>
+            </div>
+
+            <!-- Harita Durum Göstergeleri (Renk + İkon + Metin) -->
+            <div class="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+              <div class="flex flex-wrap items-center gap-4">
+                <span class="font-bold text-slate-700">Direk Durum Anahtarı:</span>
+                <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-800"><span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span> ● Aktif Direk (6)</span>
+                <span class="inline-flex items-center gap-1.5 font-semibold text-red-800"><span class="w-3 h-3 rounded-full bg-red-500 inline-block"></span> ✕ Çevrim Dışı Direk (1)</span>
+                <span class="inline-flex items-center gap-1.5 font-semibold text-amber-800"><span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span> ⚙ Bakımdaki Direk (1)</span>
+              </div>
+              <span class="text-slate-500">İncelemek istediğiniz direğin üzerine tıklayın</span>
+            </div>
+          </div>
+
+          <!-- Sağ Sütun: Seçili Direk Ayrıntı Paneli -->
+          <div id="selected-pole-detail" class="bg-white rounded-xl p-4 border-2 border-emerald-700/30 shadow-sm"></div>
+        </div>
+      </div>
+
+      <!-- Tüm Kontrol Direkleri Filtrelenebilir Liste -->
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h2 class="font-bold text-slate-900 text-base">Tüm Kontrol Direkleri Envanteri</h2>
+            <p class="text-xs text-slate-500">Çalışma durumuna göre filtreleyin ve direk telemetrisini inceleyin</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <label for="map-pole-status-filter" class="text-xs font-semibold text-slate-700">Durum Filtresi:</label>
+            <select id="map-pole-status-filter" onchange="renderMapView()" class="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold bg-white">
+              <option value="ALL">Tüm Direkler (8)</option>
+              <option value="active">● Yalnızca Aktif (6)</option>
+              <option value="offline">✕ Yalnızca Çevrim Dışı (1)</option>
+              <option value="maintenance">⚙ Yalnızca Bakımda (1)</option>
+            </select>
+          </div>
+        </div>
+        <div id="map-poles-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5"></div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 3: CANLI TESPİT VE YAPAY ZEKÂ ANALİZİ                        -->
+    <!-- ================================================================== -->
+    <section id="view-detections" class="tab-section hidden space-y-5">
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h1 class="text-lg font-extrabold text-slate-900">Canlı Tespit Kayıtları ve Yapay Zekâ Analizi</h1>
+            <p class="text-xs text-slate-600">Kontrol direklerindeki optik ve termal sensörlerden alınan sınıflandırma, güven skoru, bitki risk seviyesi ve güvenli işlem önerileri.</p>
+          </div>
+          <button onclick="simulateNewDetection()" class="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow">+ Yeni Simülasyon Tespiti Üret</button>
+        </div>
+
+        <!-- Açık Simülasyon Bilgilendirmesi -->
+        <div class="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 mb-4">
+          <strong>Şeffaf Simülasyon Bildirimi:</strong> Gerçek saha kamerası veya canlı yapay zekâ çıkarım donanımı bağlı olmadığından bu bölümdeki kayıtlar doğrulanmış örnek simülasyon verileridir. Yararlı türler (ör. Uğur Böceği, Bal Arısı) sistem tarafından otomatik olarak <em>Koruma Altında (Müdahale Yok)</em> sınıfına alınır.
+        </div>
+
+        <!-- Arama ve Çoklu Filtre Çubuğu -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 mb-4">
+          <div class="lg:col-span-2">
+            <label for="det-search-input" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Tür, Analiz veya Kayıt No Ara</label>
+            <input id="det-search-input" type="search" oninput="renderDetectionsView()" placeholder="Örn: Tuta absoluta, Yaban Domuzu, TSP-2026..." class="w-full rounded-lg border border-slate-300 px-3 py-1.5 text-xs bg-white" />
+          </div>
+          <div>
+            <label for="det-risk-filter" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Bitki Risk Seviyesi</label>
+            <select id="det-risk-filter" onchange="renderDetectionsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs bg-white">
+              <option value="ALL">Tüm Risk Seviyeleri</option>
+              <option value="Kritik">▲ Kritik Risk</option>
+              <option value="Yüksek">▲ Yüksek Risk</option>
+              <option value="Orta">● Orta Risk</option>
+              <option value="Düşük">▼ Düşük Risk</option>
+              <option value="Yararlı / Zararsız">★ Yararlı / Zararsız</option>
+            </select>
+          </div>
+          <div>
+            <label for="det-pole-filter" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Kontrol Direği</label>
+            <select id="det-pole-filter" onchange="renderDetectionsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs bg-white">
+              <option value="ALL">Tüm Direkler</option>
+              <option value="KD-101">KD-101 (A-1 Buğday)</option>
+              <option value="KD-102">KD-102 (A-1 Buğday)</option>
+              <option value="KD-103">KD-103 (B-2 Domates)</option>
+              <option value="KD-104">KD-104 (B-2 Domates)</option>
+              <option value="KD-106">KD-106 (C-3 Zeytinlik)</option>
+              <option value="KD-107">KD-107 (D-4 Mısır)</option>
+            </select>
+          </div>
+          <div>
+            <label for="det-status-filter" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">İşlem Durumu</label>
+            <select id="det-status-filter" onchange="renderDetectionsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs bg-white">
+              <option value="ALL">Tüm Durumlar</option>
+              <option value="Bekleyen">⏳ Bekleyen</option>
+              <option value="Onaylanan">▶ Onaylanan</option>
+              <option value="Tamamlanan">✓ Tamamlanan</option>
+              <option value="İptal Edilen">✕ İptal Edilen</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-between text-xs text-slate-600 mb-2">
+          <span id="det-filtered-count" class="font-semibold"></span>
+          <button onclick="resetDetectionFilters()" class="text-emerald-700 font-semibold hover:underline">Filtreleri Sıfırla</button>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 bg-slate-100 text-slate-700 uppercase tracking-wider text-[11px]">
+                <th class="py-2.5 px-3">Kayıt No</th>
+                <th class="py-2.5 px-3">Tespit Edilen Canlı / Sınıf</th>
+                <th class="py-2.5 px-3">Direk & Zaman</th>
+                <th class="py-2.5 px-3">YZ Güven Skoru</th>
+                <th class="py-2.5 px-3">Tahmini Risk</th>
+                <th class="py-2.5 px-3">YZ Analiz Sonucu ve Önerilen Güvenli İşlem</th>
+                <th class="py-2.5 px-3">Durum</th>
+                <th class="py-2.5 px-3 text-right">Eylem</th>
+              </tr>
+            </thead>
+            <tbody id="detections-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 4: GÜVENLİ MÜDAHALE VE KİMYASAL UYGULAMA YÖNETİMİ            -->
+    <!-- ================================================================== -->
+    <section id="view-chemical" class="tab-section hidden space-y-6">
+      <!-- Güvenlik Mimarisi ve Donanım Şeffaflık Uyarısı -->
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 class="text-lg font-extrabold text-slate-900">Güvenli Müdahale ve Kimyasal Uygulama Yönetimi</h1>
+            <p class="text-xs text-slate-600">Kontrollü bitki koruma iş akışı: Risk Analizi → Tür Doğrulama → 4 Aşamalı Güvenlik Kontrolü → Yetkili Ziraat Mühendisi Onayı</p>
+          </div>
+          <span class="px-3 py-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold">Donanım Simülasyon ve Onay Akışı</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div class="font-bold text-emerald-950">1. Otomatik Müdahale Yoktur</div>
+            <p class="text-emerald-900 mt-1">Hiçbir canlıya otomatik ilaçlama veya fiziksel müdahale yapılmaz. Yararlı türlerde sistem koruma kilidi uygular.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div class="font-bold text-emerald-950">2. Etiket & Reçete Uyumu</div>
+            <p class="text-emerald-900 mt-1">Yalnızca Bakanlık (BKÜ) ruhsatlı ürünler, etiket dozu ve Hasat Öncesi Bekleme Süresi (PHI) doğrulamasıyla seçilebilir.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div class="font-bold text-emerald-950">3. Meteorolojik Sürüklenme Kilidi</div>
+            <p class="text-emerald-900 mt-1">Rüzgâr hızı 12 km/s üzerinde olduğunda komşu parsellere ilaç sürüklenmesini önlemek için onay otomatik engellenir.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <div class="font-bold text-amber-950">4. Fiziksel Donanım Güvenliği</div>
+            <p class="text-amber-900 mt-1">Bu arayüz gerçek püskürtme donanımını doğrudan tetiklemez; mTLS imzalı onay kaydı üretir ve E-Stop rölesiyle denetlenir.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Yeni Güvenli Müdahale & Kimyasal Uygulama Planlama Formu -->
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <h2 class="font-bold text-slate-900 text-base mb-1">Yeni Güvenli Müdahale / Bitki Koruma Uygulaması Planla</h2>
+        <p class="text-xs text-slate-500 mb-4">Gerekli 4 güvenlik kontrolü işaretlenmeden ve rüzgâr hızı sınırları doğrulanmadan kayıt oluşturulamaz.</p>
+
+        <form onsubmit="submitNewChemicalPlan(event)" class="space-y-4 text-xs">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            <div>
+              <label for="chem-form-field" class="block font-bold text-slate-700 mb-1">Uygulanacak Tarım Alanı (Parsel)</label>
+              <select id="chem-form-field" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white font-medium">
+                <option value="PARSEL-B2">B-2 Güney Domates & Biber Alanı (Domates)</option>
+                <option value="PARSEL-A1">A-1 Kuzey Buğday Parseli (Kışlık Buğday)</option>
+                <option value="PARSEL-C3">C-3 Doğu Zeytinlik ve Meyve Bahçesi (Zeytin)</option>
+                <option value="PARSEL-D4">D-4 Batı Mısır & Ayçiçeği Tarlası (Mısır)</option>
+              </select>
+            </div>
+            <div>
+              <label for="chem-form-target" class="block font-bold text-slate-700 mb-1">Hedef Zararlı / Tespit Kaydı</label>
+              <input id="chem-form-target" type="text" required placeholder="Örn: Tuta absoluta (TSP-2026-891)" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white" />
+            </div>
+            <div>
+              <label for="chem-form-product" class="block font-bold text-slate-700 mb-1">Onaylı Yöntem / Ruhsatlı Bitki Koruma Ürünü</label>
+              <select id="chem-form-product" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white font-medium">
+                <option value="Biolep BT-Kurstaki (Bacillus thuringiensis - Biyolarvasit)">Biolep BT-Kurstaki (Biyolarvasit • PHI: 3 Gün)</option>
+                <option value="NeemAzal T/S (Azadirachtin 10 g/L - Organik Uyumlu)">NeemAzal T/S Azadirachtin (Organik Uyumlu • PHI: 3 Gün)</option>
+                <option value="Spinosad 480 g/L (Biyokimyasal Lokal Uygulama)">Spinosad 480 g/L (Lokal Uygulama • PHI: 7 Gün)</option>
+                <option value="Kimyasal Yok — Ultrasonik & Biyoteknik Feromon Tuzak">Kimyasal Yok — Ultrasonik & Biyoteknik Feromon Tuzak</option>
+              </select>
+            </div>
+            <div>
+              <label for="chem-form-dosage" class="block font-bold text-slate-700 mb-1">Etiket Uyumlu Doz Miktarı</label>
+              <input id="chem-form-dosage" type="text" required value="100 g / dekar (Etiket Standart Dozu)" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white" />
+            </div>
+            <div>
+              <label for="chem-form-wind" class="block font-bold text-slate-700 mb-1">Ölçülen Rüzgâr Hızı (km/s — Sınır: Max 12)</label>
+              <input id="chem-form-wind" type="number" step="0.1" min="0" max="40" required value="6.5" class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white" />
+            </div>
+            <div>
+              <label for="chem-form-notes" class="block font-bold text-slate-700 mb-1">Güvenlik ve Koruyucu Ekipman (KKD) Notu</label>
+              <input id="chem-form-notes" type="text" placeholder="Örn: Operatör KKD maske/eldiven kontrolü yapıldı, arı uçuş saati dışı." class="w-full rounded-lg border border-slate-300 px-3 py-2 bg-white" />
+            </div>
+          </div>
+
+          <!-- Zorunlu 4 Maddeli Güvenlik Kontrol Listesi -->
+          <fieldset class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+            <legend class="font-bold text-slate-800 px-1">Zorunlu Ön Güvenlik Doğrulama Adımları (Tümü İşaretlenmelidir)</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-2">
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input id="chk-safety-1" type="checkbox" class="mt-0.5 rounded border-slate-300 text-emerald-700" checked />
+                <span><strong>1. Uzman Değerlendirmesi:</strong> Ekonomik zarar eşiği aşıldı ve yararlı tür (arı/uğur böceği) zarar görmeyeceği doğrulandı.</span>
+              </label>
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input id="chk-safety-2" type="checkbox" class="mt-0.5 rounded border-slate-300 text-emerald-700" checked />
+                <span><strong>2. Ürün Etiketi ve PHI Uyumu:</strong> Seçilen ürün ilgili bitki için ruhsatlıdır ve hasat öncesi bekleme süresine uygundur.</span>
+              </label>
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input id="chk-safety-3" type="checkbox" class="mt-0.5 rounded border-slate-300 text-emerald-700" checked />
+                <span><strong>3. Meteorolojik Kontrol:</strong> Rüzgâr hızı 12 km/s altındadır ve yağış/sürüklenme riski bulunmamaktadır.</span>
+              </label>
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input id="chk-safety-4" type="checkbox" class="mt-0.5 rounded border-slate-300 text-emerald-700" checked />
+                <span><strong>4. Saha Güvenliği ve KKD:</strong> Uygulama alanında yetkisiz insan/hayvan bulunmadığı kamera ile teyit edildi.</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-slate-500">Not: Kayıt oluşturulduktan sonra uygulamaya geçmesi için <strong>Ziraat Mühendisi (Yönetici)</strong> onayı gerekir.</span>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow">Güvenli Müdahale Talebini Kaydet</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Kimyasal ve Biyoteknik Uygulama Kayıtları Tablosu -->
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <h2 class="font-bold text-slate-900 text-base mb-1">Müdahale ve Kimyasal Uygulama Kayıtları</h2>
+        <p class="text-xs text-slate-500 mb-3">Onay bekleyen, simülasyonda olan, tamamlanan ve güvenlik kilidiyle reddedilen uygulamalar</p>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 bg-slate-100 text-slate-700 uppercase tracking-wider text-[11px]">
+                <th class="py-2.5 px-3">Uygulama No & Zaman</th>
+                <th class="py-2.5 px-3">Uygulanacak Alan & İlgili Bitki</th>
+                <th class="py-2.5 px-3">Onaylı Ürün & Kullanım Bilgisi</th>
+                <th class="py-2.5 px-3">4 Aşamalı Güvenlik Kontrolü</th>
+                <th class="py-2.5 px-3">Güvenlik Uyarıları & Yetkililer</th>
+                <th class="py-2.5 px-3">Durum</th>
+                <th class="py-2.5 px-3 text-right">Yetkili İşlemi</th>
+              </tr>
+            </thead>
+            <tbody id="chemical-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 5: RAPORLAMA VE İSTATİSTİKLER                                -->
+    <!-- ================================================================== -->
+    <section id="view-reports" class="tab-section hidden space-y-5">
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div>
+            <h1 class="text-lg font-extrabold text-slate-900">Raporlama, İstatistikler ve CSV Dışa Aktarma</h1>
+            <p class="text-xs text-slate-600">Günlük, haftalık ve aylık canlı tespit analizleri, direk çalışma süreleri ve filtrelenebilir veri aktarımı.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btn-period-daily" onclick="setReportPeriod('daily')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Günlük Rapor</button>
+            <button id="btn-period-weekly" onclick="setReportPeriod('weekly')" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-700 text-white">Haftalık Rapor</button>
+            <button id="btn-period-monthly" onclick="setReportPeriod('monthly')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Aylık Rapor</button>
+            <button onclick="exportReportToCSV()" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sky-700 hover:bg-sky-800 text-white shadow flex items-center gap-1.5">
+              <span>⬇</span> <span>CSV Olarak Dışa Aktar</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Rapor Filtre Çubuğu -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200 mb-4 text-xs">
+          <div>
+            <label for="rep-date-start" class="block font-bold text-slate-600 uppercase text-[11px] mb-1">Başlangıç Tarihi</label>
+            <input id="rep-date-start" type="date" value="2026-10-10" onchange="renderReportsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white" />
+          </div>
+          <div>
+            <label for="rep-date-end" class="block font-bold text-slate-600 uppercase text-[11px] mb-1">Bitiş Tarihi</label>
+            <input id="rep-date-end" type="date" value="2026-10-15" onchange="renderReportsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white" />
+          </div>
+          <div>
+            <label for="rep-category-filter" class="block font-bold text-slate-600 uppercase text-[11px] mb-1">Canlı Türü / Sınıfı</label>
+            <select id="rep-category-filter" onchange="renderReportsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white">
+              <option value="ALL">Tüm Canlı Sınıfları</option>
+              <option value="Zararlı Böcek">Zararlı Böcekler</option>
+              <option value="Yabani Memeli">Yabani Memeliler</option>
+              <option value="Kuş">Kuş / Kanatlılar</option>
+              <option value="Kemirgen">Kemirgenler</option>
+              <option value="Yararlı Böcek">Yararlı Böcekler</option>
+            </select>
+          </div>
+          <div>
+            <label for="rep-risk-filter" class="block font-bold text-slate-600 uppercase text-[11px] mb-1">Risk Seviyesi</label>
+            <select id="rep-risk-filter" onchange="renderReportsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white">
+              <option value="ALL">Tüm Risk Seviyeleri</option>
+              <option value="Kritik">Kritik</option>
+              <option value="Yüksek">Yüksek</option>
+              <option value="Orta">Orta</option>
+              <option value="Düşük">Düşük</option>
+              <option value="Yararlı / Zararsız">Yararlı / Zararsız</option>
+            </select>
+          </div>
+          <div>
+            <label for="rep-pole-filter" class="block font-bold text-slate-600 uppercase text-[11px] mb-1">Kontrol Direği</label>
+            <select id="rep-pole-filter" onchange="renderReportsView()" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 bg-white">
+              <option value="ALL">Tüm Direkler</option>
+              <option value="KD-101">KD-101</option>
+              <option value="KD-102">KD-102</option>
+              <option value="KD-103">KD-103</option>
+              <option value="KD-104">KD-104</option>
+              <option value="KD-106">KD-106</option>
+              <option value="KD-107">KD-107</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Özet Metrikler -->
+        <div id="report-summary-metrics" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5"></div>
+
+        <!-- Rapor Grafikleri -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+          <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+            <h2 class="font-bold text-slate-900 text-sm mb-1">Canlı Tespitleri ve Risk Eğilimi</h2>
+            <p class="text-xs text-slate-500 mb-3">Seçilen rapor dönemine göre tespit edilen canlıların risk dağılımı</p>
+            <div class="chart-box">
+              <canvas id="chart-report-detections"></canvas>
+            </div>
+          </div>
+          <div class="p-4 rounded-xl border border-slate-200 bg-slate-50/50">
+            <h2 class="font-bold text-slate-900 text-sm mb-1">Kontrol Direkleri Çalışma ve Çevrim Dışı Kalma Süreleri (Son 30 Gün)</h2>
+            <p class="text-xs text-slate-500 mb-3">Direk bazında aktif çalışma saati ve çevrim dışı/bakım süreleri (Toplam 720 saat)</p>
+            <div class="chart-box">
+              <canvas id="chart-report-uptime"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Filtrelenmiş Rapor Tablosu -->
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 bg-slate-100 text-slate-700 uppercase tracking-wider text-[11px]">
+                <th class="py-2.5 px-3">Kayıt No</th>
+                <th class="py-2.5 px-3">Canlı Türü</th>
+                <th class="py-2.5 px-3">Sınıf / Kategori</th>
+                <th class="py-2.5 px-3">Direk & Parsel</th>
+                <th class="py-2.5 px-3">Tarih & Saat</th>
+                <th class="py-2.5 px-3">YZ Güven</th>
+                <th class="py-2.5 px-3">Risk Seviyesi</th>
+              </tr>
+            </thead>
+            <tbody id="report-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================== -->
+    <!-- BÖLÜM 6: SİSTEM MİMARİSİ, KLASÖR YAPISI VE AYARLAR                 -->
+    <!-- ================================================================== -->
+    <section id="view-architecture" class="tab-section hidden space-y-5">
+      <div class="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 shadow-sm space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 class="text-lg font-extrabold text-slate-900">Proje Klasör Mimarisi, Backend Entegrasyonu ve Güvenlik</h1>
+            <p class="text-xs text-slate-600">Çok dosyalı kaynak kodu mimarisi, rol tabanlı yetkilendirme matrisi ve gerçek donanım entegrasyonu gereksinimleri.</p>
+          </div>
+          <button onclick="resetDemoData()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs">Simülasyon Verilerini Sıfırla</button>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5 text-xs">
+          <div class="p-4 rounded-xl bg-slate-900 text-emerald-300 font-mono leading-relaxed overflow-x-auto">
+            <div class="text-white font-bold mb-2 font-sans">📁 Çok Dosyalı Proje Klasör Yapısı (agroshield-pro/)</div>
+<pre class="text-[11px]">agroshield-pro/
+├── index.html             # Ana uygulama kabuğu ve ARIA şablonları
+├── package.json           # Bağımlılıklar ve başlatma betikleri
+├── .env.example           # Güvenli ortam değişkenleri şablonu
+├── README.md              # Kurulum, çalıştırma ve mimari kılavuz
+├── css/
+│   └── styles.css         # Tarım temalı tasarım sistemi ve WCAG stiller
+├── js/
+│   ├── data.js            # Veri modelleri ve localStorage yönetimi
+│   ├── auth.js            # RBAC yetkilendirme ve girdi doğrulama
+│   ├── map.js             # SVG Arazi + Leaflet Coğrafi Harita modülü
+│   ├── charts.js          # Chart.js istatistik ve rapor grafikleri
+│   └── app.js             # Ana kontrolcü, filtreler, CSV ve E-Stop
+├── backend/
+│   └── server.js          # Express + JWT + RBAC + MQTT/E-Stop API
+└── scripts/
+    └── build-canvas.py    # İzole Canvas önizleme derleyicisi</pre>
+          </div>
+
+          <div class="space-y-3">
+            <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <h3 class="font-bold text-slate-900 text-sm">Rol Tabanlı Erişim Kontrolü (RBAC) Testi</h3>
+              <p class="text-slate-600 mt-1">Sağ üstteki <strong>Yetki Rolü</strong> seçicisinden rolünüzü değiştirerek yetki sınırlarını canlı test edebilirsiniz:</p>
+              <ul class="list-disc list-inside mt-2 space-y-1 text-slate-700">
+                <li><strong>Ziraat Mühendisi (Yönetici):</strong> Kimyasal uygulama onaylama, direk durumunu değiştirme ve Acil Durdurma kilidini kaldırma yetkisine sahiptir.</li>
+                <li><strong>Saha Operatörü (Standart):</strong> Tespit durumlarını güncelleyebilir, müdahale talebi oluşturabilir ve Acil Durdurma başlatabilir; ancak <em>kimyasal onay veremez</em>.</li>
+                <li><strong>Denetçi / Gözlemci (Salt Okunur):</strong> Tüm panelleri ve haritayı inceleyebilir, CSV rapor indirebilir; hiçbir veriyi değiştiremez.</li>
+              </ul>
+            </div>
+
+            <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950">
+              <h3 class="font-bold text-sm">Gerçek Donanım ve Backend Entegrasyonu Gerektiren Özellikler</h3>
+              <ul class="list-disc list-inside mt-1.5 space-y-1">
+                <li><strong>Saha Direkleri Telemetrisi:</strong> Gerçek direklerden veri almak için <code>backend/server.js</code> içindeki MQTT/TLS broker bağlantısı ve PostgreSQL/TimescaleDB veritabanı yapılandırılmalıdır.</li>
+                <li><strong>Kamera ve Kenar YZ:</strong> RTSP/WebRTC video akışı ve kenar çıkarım (YOLOv8) birimi entegre edilene kadar sistem simülasyon veri setini kullanır.</li>
+                <li><strong>Fiziksel Müdahale Donanımı:</strong> Gerçek ilaçlama/caydırıcı valfleri için çift yönlü mTLS sertifikası ve donanımsal Acil Durdurma (E-Stop) rölesi zorunludur.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Alt Bilgi (Footer) -->
+  <footer class="bg-white border-t border-slate-200 py-3 px-4 text-xs text-slate-500 mt-8">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2">
+      <span><strong>AgroShield Pro v1.2</strong> — Akıllı Tarım, Yapay Zekâ Gözlem ve Güvenli Bitki Koruma Yönetim Sistemi</span>
+      <span>Simülasyon & Doğrulama Ortamı • Tüm Butonlar, Filtreler ve Rol Yetkileri Aktif</span>
+    </div>
+  </footer>
+
+  <!-- ================================================================== -->
+  <!-- MODALLAR VE BİLDİRİM KAPSAYICISI                                   -->
+  <!-- ================================================================== -->
+
+  <!-- 1. Canlı Tespit Detay Modalı -->
+  <div id="modal-detection-detail" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Canlı Tespit Detayı">
+    <div id="modal-detection-content" class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto"></div>
+  </div>
+
+  <!-- 2. Acil Durdurma (E-Stop) Onay Modalı -->
+  <div id="modal-estop" class="hidden fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Acil Durdurma Onayı">
+    <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl border-2 border-red-600">
+      <div class="flex items-center gap-2.5 text-red-700 font-extrabold text-base">
+        <span class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">■</span>
+        <span>ACİL DURDURMA (E-STOP) ONAYI</span>
+      </div>
+      <p class="text-xs text-slate-600 mt-3 leading-relaxed">
+        Bu işlem tüm kontrol direklerindeki aktif müdahale görevlerini ve onay bekleyen kimyasal uygulama simülasyonlarını <strong>anında durdurur</strong> ve güvenlik kilidine alır.
+      </p>
+      <div class="mt-3">
+        <label for="estop-reason-input" class="block text-xs font-bold text-slate-700 mb-1">Acil Durdurma Gerekçesi:</label>
+        <input id="estop-reason-input" type="text" value="Saha güvenlik kontrolü / Ani rüzgâr artışı" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-xs" />
+      </div>
+      <div class="mt-4 flex items-center justify-end gap-2">
+        <button onclick="closeEmergencyStopModal()" class="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">Vazgeç</button>
+        <button onclick="confirmEmergencyStop()" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-extrabold shadow">■ Tüm Müdahaleleri Durdur</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. CSV Rapor Önizleme ve Kopyalama Modalı -->
+  <div id="modal-csv-preview" class="hidden fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="CSV Dışa Aktarma Önizlemesi">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-5 shadow-2xl border border-slate-200">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div>
+          <h3 class="font-bold text-slate-900 text-base">CSV Raporu Dışa Aktarıldı</h3>
+          <p class="text-xs text-slate-500">Dosya indirme işlemi başlatıldı. Ayrıca aşağıdaki CSV verisini doğrudan kopyalayabilirsiniz.</p>
+        </div>
+        <button onclick="closeCsvModal()" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm">✕</button>
+      </div>
+      <textarea id="csv-preview-textarea" readonly class="w-full h-56 mt-3 p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-xs"></textarea>
+      <div class="mt-3 flex items-center justify-end gap-2">
+        <button onclick="copyCsvToClipboard()" class="px-3.5 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold">Panoya Kopyala</button>
+        <button onclick="closeCsvModal()" class="px-3.5 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold">Kapat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sağ Alt Bildirim (Toast) Alanı -->
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2" aria-live="polite"></div>
+
+ 
+ <!-- Modüler JavaScript Dosyaları -->
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/map.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "agroshield-pro-akilli-tarim",
+  "version": "1.2.0",
+  "description": "Akıllı Tarım, Sensör Direkleri, Yapay Zekâ Canlı Tespiti ve Güvenli Bitki Koruma Yönetim Sistemi",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "serve:frontend": "npx serve . -l 3000",
+    "python:server": "python3 -m http.server 8080",
+    "build:canvas": "python3 scripts/build-canvas.py"
+  },
+  "keywords": [
+    "smart-agriculture",
+    "akilli-tarim",
+    "iot-poles",
+    "ai-pest-detection",
+    "crop-protection"
+  ],
+  "author": "AgroShield Pro Sistem Mimarisi",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mqtt": "^5.5.0",
+    "pg": "^8.11.5",
+    "ws": "^8.16.0"
+  }
+}
